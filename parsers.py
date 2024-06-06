@@ -9,9 +9,24 @@ from modules.headers import DEFAULT_HEADERS
 import csv
 import json
 
-
-TEST = ['https://irecommend.ru/content/tinkoff-biznes', 'https://irecommend.ru/content/tinkoff', 'https://развивай.рф/business_credits/tinkoff/otzyvy']
+TEST = ['https://irecommend.ru/content/tinkoff-biznes', 'https://irecommend.ru/content/tinkoff', 'https://развивай.рф/business_credits/tinkoff/otzyvy', 'https://рко.рф/reviews/bank/tinkoff']
 DOMAINS = ['irecommend.ru', 'развивай.рф']
+
+translate_month = {
+    'Янв': 'January',
+    'Фев': 'February',
+    'Мар': 'March',
+    'Апр': 'April',
+    'Май': 'May',
+    'Мая': 'May',
+    'Июн': 'June',
+    'Июл': 'July',
+    'Авг': 'August',
+    'Сен': 'September',
+    'Окт': 'October',
+    'Ноя': 'November',
+    'Дек': 'December'
+}
 
 class Parser:
     def __init__(self, links:list, start_date:str=None):
@@ -31,13 +46,22 @@ class Parser:
 
     # String datetime to Python datetime
     def string_to_date(self, start_date):
+        if ' ' in start_date:
+            d, m, y = start_date.lower().split(' ')
+            m = translate_month[str(m).capitalize()[:3]][:3]
+
+            return datetime.strptime(' '.join([d, m, y]), u'%d %b %Y')
+        
         if start_date != None and start_date != '': return datetime.strptime(start_date, '%d.%m.%Y')
         else: return 'LAST'
+
+    def date_to_string(self, date):
+        return datetime.strftime(date, '%d.%m.%Y')
 
 
 
     # irecommend.ru
-    def irecommend_parsing_card(self, url, start_date=None):
+    def irecommend(self, url, start_date=None):
         if start_date == None: start_date = self.start_date
         else: start_date = self.string_to_date(start_date)
 
@@ -138,6 +162,69 @@ class Parser:
             self.result.append(card)
         
 
+    # рко.рф
+    def rkorf(self, url, start_date=None):
+        if start_date == None: start_date = self.start_date
+        else: start_date = self.string_to_date(start_date)
+
+        cards = []
+
+        max_pages = 3
+        current_page = 0
+
+        while current_page < 3:
+            current_page += 1
+
+            response = requests.get(url + f'?page={current_page}', headers=DEFAULT_HEADERS)
+            sleep(0.1)
+            html = BeautifulSoup(response.content, 'html.parser')
+            sleep(0.1)
+
+            name = html.find('div', {'class': 'catalog-bank__title'}).text.strip().replace('\n', ' ')
+            max_pages = int(html.find('ul', {'class': 'paginator'}).find_all('li')[-2].text.strip())
+
+            main_block = html.find('div', {'class': 'reviews-list'})
+
+            for card in main_block.find_all('div', {'class': 'reviews-user'}):
+                data = []
+
+                date_text = card.find('ul', {'class': 'reviews-user__info'}).find('li').text.strip().replace('\n', ' ')
+
+                date = self.date_to_string(self.string_to_date(date_text))
+                stars = card.find('ul', {'class': 'stars-rate__list'}).get('data-star')
+
+                title = card.find('div', {'class': 'reviews-user__title'}).text.strip().replace('\n', ' ')
+                text = card.find('div', {'class': 'reviews-user__answer'}).text.strip().replace('\n', ' ')
+
+                link = 'https://рко.рф' + card.find('div', {'class': 'reviews-user__more'}).find('a').get('href')
+
+                if self.string_to_date(date) < start_date:
+                    continue
+
+                data.append(date)
+                data.append(name)
+                data.append(str(stars))
+                data.append(link)
+                data.append(str(title + ' ' + text).replace('\r', ' ').strip())
+
+                cards.append(data)
+
+        for card in cards:
+            self.result.append(card)
+
+
+            
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -160,14 +247,16 @@ class Parser:
 
 
 if __name__ == '__main__':
-    pars = Parser(TEST, '23.05.2024')
+    pars = Parser(TEST, '23.05.2023')
     # for link in TEST:
     #     pars.irecommend_parsing_card(link)
 
-    pars.razvivay(TEST[2])
+    # pars.razvivay(TEST[2])
 
 
-    pars.save_result()
+    # pars.rkorf(TEST[3])
 
+
+    # pars.save_result()
 
     # print(pars.__dict__)
