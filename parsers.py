@@ -3,10 +3,11 @@ from bs4 import BeautifulSoup
 from threading import Thread
 from datetime import datetime
 from os import listdir, mkdir
+from time import sleep
 import csv
 import json
 
-TEST = ['https://irecommend.ru/content/tinkoff-biznes']
+TEST = ['https://irecommend.ru/content/tinkoff-biznes', 'https://irecommend.ru/content/tinkoff']
 DOMAINS = ['irecommend.ru']
 
 class Parser:
@@ -15,8 +16,12 @@ class Parser:
         self.domains = {}
         self.last_dates = {}
 
+        self.result = []
+
         self.LAST_DATE_SAVEFOLDERNAME = 'save_files'
         self.LAST_DATE_SAVEFILENAME = 'last_date.json'
+
+        self.RESULT_FOLDERNAME = 'result'
 
         for domain in DOMAINS:
             if not domain in self.domains: self.domains[domain] = []
@@ -25,17 +30,20 @@ class Parser:
                 if domain in link: self.domains[domain].append(link)
 
     def irecommend_parsing_card(self, url):
-        current_page = 0
+        current_page = -1
         max_page = 150000
 
         cards = []
+        can_go = True
 
         if not '?page=' in url: url += '?new=1&page='
-        while current_page < max_page:
+        while current_page < max_page and can_go:
             current_page += 1
 
             response = requests.get(url  + str(current_page))
+            sleep(0.1)
             html = BeautifulSoup(response.content, 'html.parser')
+            sleep(0.1)
 
             CARD_NAME = html.find('h1', {'class': 'largeHeader'}).text.strip().replace('\n', ' ')
 
@@ -49,7 +57,8 @@ class Parser:
                 date_card = card.find('div', {'class': 'created'}).text.strip().replace('\n', ' ')
 
                 if datetime.strptime(date_card, '%d.%m.%Y') < self.start_date:
-                    continue
+                    can_go = False
+                    break
 
                 data.append(date_card)
                 data.append(CARD_NAME)
@@ -68,12 +77,13 @@ class Parser:
 
                 cards.append(data)
 
-            # print(cards)
-            with open('result.csv', 'w', encoding='utf8', newline='') as file:
-                writer = csv.writer(file)
-                writer.writerows(cards)
+        for card in cards:
+            self.result.append(card)
 
-            self.save_date()
+        # print(cards)
+        
+
+        self.save_date()
 
     def save_date(self):
         if not self.LAST_DATE_SAVEFOLDERNAME in listdir(): mkdir(self.LAST_DATE_SAVEFOLDERNAME)
@@ -81,8 +91,18 @@ class Parser:
         with open(self.LAST_DATE_SAVEFOLDERNAME + '/' + self.LAST_DATE_SAVEFILENAME, 'w', encoding='utf8') as file:
             json.dump(self.last_dates, file, ensure_ascii=False)
 
+    def save_result(self):
+        if not self.RESULT_FOLDERNAME in listdir(): mkdir(self.RESULT_FOLDERNAME)
+
+        with open(self.RESULT_FOLDERNAME + '/' + datetime.strftime(datetime.now(), '%d-%m-%Y %H-%M-%S.csv'), '+a', encoding='utf8', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerows(self.result)
+
 
 if __name__ == '__main__':
     pars = Parser(TEST, '23.05.2024')
-    pars.irecommend_parsing_card(TEST[0])
-    print(pars.__dict__)
+    for link in TEST:
+        pars.irecommend_parsing_card(link)
+
+    pars.save_result()
+    # print(pars.__dict__)
