@@ -13,10 +13,7 @@ DOMAINS = ['irecommend.ru']
 class Parser:
     def __init__(self, links:list, start_date:str):
         self.start_date = datetime.strptime(start_date, '%d.%m.%Y')
-        self.domains = {}
-        self.last_dates = {}
-
-        self.result = []
+        self.domains, self.last_dates, self.result = {}, {}, []
 
         self.LAST_DATE_SAVEFOLDERNAME = 'save_files'
         self.LAST_DATE_SAVEFILENAME = 'last_date.json'
