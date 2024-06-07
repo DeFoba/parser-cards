@@ -9,8 +9,11 @@ from modules.headers import DEFAULT_HEADERS
 import csv
 import json
 
-TEST = ['https://irecommend.ru/content/tinkoff-biznes', 'https://irecommend.ru/content/tinkoff', 'https://развивай.рф/business_credits/tinkoff/otzyvy', 'https://рко.рф/reviews/bank/tinkoff']
-DOMAINS = ['irecommend.ru', 'развивай.рф']
+TEST = ['https://irecommend.ru/content/tinkoff-biznes', 'https://irecommend.ru/content/tinkoff', 'https://развивай.рф/business_credits/tinkoff/otzyvy',
+        'https://рко.рф/reviews/bank/tinkoff', 'https://bankiclub.ru/rkos/tinkoff-business/reviews/', 'https://bankiros.ru/bank/tcs/otzyvy',
+        'https://bankiros.ru/bank/tcs/otzyvy/rko', 'https://brobank.ru/banki/tinkoff/comments/', 'https://brobank.ru/rko-tinkoff/comments/']
+
+DOMAINS = ['irecommend.ru', 'развивай.рф', 'рко.рф', 'bankiclub.ru', 'bankiros.ru', 'brobank.ru']
 
 translate_month = {
     'Янв': 'January',
@@ -57,6 +60,14 @@ class Parser:
 
     def date_to_string(self, date):
         return datetime.strftime(date, '%d.%m.%Y')
+    
+    def send(self, url, proxy=None):
+        return requests.get(url, headers=DEFAULT_HEADERS)
+
+
+
+
+
 
 
 
@@ -75,7 +86,7 @@ class Parser:
         while current_page < max_page and can_go:
             current_page += 1
 
-            response = requests.get(url  + str(current_page), headers=DEFAULT_HEADERS)
+            response = self.send(url  + str(current_page))
             sleep(0.1)
             html = BeautifulSoup(response.content, 'html.parser')
             sleep(0.1)
@@ -115,6 +126,12 @@ class Parser:
         for card in cards:
             self.result.append(card)
 
+
+
+
+
+
+
     
     # развивай.рф
     def razvivay(self, url, start_date=None):
@@ -123,7 +140,7 @@ class Parser:
 
         cards = []
 
-        response = requests.get(url, headers=DEFAULT_HEADERS)
+        response = self.send(url)
         sleep(0.1)
         html = BeautifulSoup(response.content, 'html.parser')
         sleep(0.1)
@@ -150,7 +167,7 @@ class Parser:
             data.append(date_text)
             data.append(name)
             data.append(str(star_count))
-            data.append('')
+            data.append(url)
             data.append(title + ' ' + text)
 
             if not name in self.last_dates:
@@ -161,6 +178,14 @@ class Parser:
         for card in cards:
             self.result.append(card)
         
+
+
+
+
+
+
+
+
 
     # рко.рф
     def rkorf(self, url, start_date=None):
@@ -175,7 +200,7 @@ class Parser:
         while current_page < 3:
             current_page += 1
 
-            response = requests.get(url + f'?page={current_page}', headers=DEFAULT_HEADERS)
+            response = self.send(url + f'?page={current_page}')
             sleep(0.1)
             html = BeautifulSoup(response.content, 'html.parser')
             sleep(0.1)
@@ -209,11 +234,188 @@ class Parser:
 
                 cards.append(data)
 
+                if not name in self.last_dates:
+                    self.last_dates[name] = date_text
+
         for card in cards:
             self.result.append(card)
 
 
+    
+
+
+
+
             
+
+    # bankiclub.ru
+    def bankiclub(self, url, start_date=None):
+        if start_date == None: start_date = self.start_date
+        else: start_date = self.string_to_date(start_date)
+
+        cards = []
+
+
+        response = self.send(url)
+        sleep(0.1)
+        html = BeautifulSoup(response.content, 'html.parser')
+        sleep(0.1)
+
+        main_blcok = html.find('div', {'id': 'JsReviews'})
+
+        name = html.find('div', {'class': 'firm-item-h2'}).text.strip().replace('\n', ' ').replace('\r', ' ')
+
+        for card in main_blcok.find_all('div', {'class': 'review-contaner'}):
+            data = []
+
+            date_text = card.find('div', {'class': 'review-contaner-date'}).text.strip().replace('\n', ' ').replace('\r', ' ')
+            date = self.date_to_string(self.string_to_date(date_text))
+            stars = str(len(card.find('div', {'class': 'rating-result'}).find_all('span', {'class': 'active'})))
+            text = card.find('div', {'class': 'review-content'}).text.strip().replace('\n', ' ').replace('\r', ' ')
+            
+            data.append(date)
+            data.append(name)
+            data.append(stars)
+            data.append(url)
+            data.append(text)
+
+            if self.string_to_date(date_text) < start_date:
+                continue
+
+            cards.append(data)
+
+
+            if not name in self.last_dates:
+                self.last_dates[name] = date_text
+
+
+        for card in cards:
+            self.result.append(card)
+
+
+
+
+
+    
+
+    # bankiros.ru
+    def bankiros(self, url, start_date=None):
+        if start_date == None: start_date = self.start_date
+        else: start_date = self.string_to_date(start_date)
+
+        cards = []
+
+
+        response = self.send(url + '?limit=100')
+        sleep(0.1)
+        html = BeautifulSoup(response.content, 'html.parser')
+        sleep(0.1)
+
+        main_blcok = html.find('div', {'class': 'xxx-reviews__list'})
+
+        name = html.find('ul', {'class': 'breadcrumb'}).find_all('li')[-1].find('span').text.strip().replace('\n', ' ').replace('\r', ' ')
+
+        for card in main_blcok.find_all('div', {'class': 'xxx-reviews-card__body'}):
+            data = []
+
+            date = card.find('span', {'class': 'xxx-reviews-info__date'}).text.strip().replace('\n', ' ').replace('\r', ' ')
+            title_el = card.find('div', {'class': 'xxx-reviews-card__title'})
+            title = title_el.text.strip().replace('\n', ' ').replace('\r', ' ')
+
+            stars = card.find('div', {'class': 'xxx-reviews-rating'}).text.strip().replace('\n', ' ').replace('\r', ' ').split(' ')[0]
+
+            text = card.find('p', {'class': 'xxx-reviews-card__content'}).text.strip().replace('\n', ' ').replace('\r', ' ')
+
+            if title_el.find('a') == None:
+                link = url
+            else:
+                link = title_el.find('a').get('href')
+
+            data.append(date)
+            data.append(name)
+            data.append(stars)
+            data.append(link)
+            data.append(title + ' ' + text)
+
+            if self.string_to_date(date) < start_date:
+                break
+
+            cards.append(data)
+
+
+            if not name in self.last_dates:
+                self.last_dates[name] = date
+
+
+        for card in cards:
+            self.result.append(card)
+
+
+
+
+    # brobank.ru
+    def brobank(self, url, start_date=None):
+        if start_date == None: start_date = self.start_date
+        else: start_date = self.string_to_date(start_date)
+
+        cards = []
+
+        current_page = 0
+        max_page_count = 3
+
+        can_go = True
+
+
+        while current_page < max_page_count and can_go:
+            current_page += 1
+            if url[-1] != '/': url += '/'
+
+            response = self.send(url + f'comment-page-{current_page}/')
+            sleep(0.1)
+            html = BeautifulSoup(response.content, 'html.parser')
+            sleep(0.1)
+
+            main_blcok = html.find('ol', {'id': 'comments-list_ajax'})
+
+            name = html.find('div', {'class': 'page-title'}).text.strip().replace('\n', ' ').replace('\r', ' ')
+
+            max_page_count = int([x for x in html.find_all('a', 'page-numbers') if not 'next' in x.get('class')][-1].text.strip().replace('\n', ' ').replace('\r', ' '))
+
+            for card in main_blcok.find_all('article', {'class': 'comment'}):
+                data = []
+
+                date = card.find('time').text.strip().replace('\n', ' ').replace('\r', ' ').split(' ')[0]
+                try:
+                    stars = card.find('span', {'class': 'new-card__rating_num'}).get('data-count')
+                except:
+                    continue
+                title = card.find('div', {'class': 'title_review'}).text.strip().replace('\n', ' ').replace('\r', ' ')
+                text = card.find('section', {'class': 'comment-content'}).text.strip().replace('\n', ' ').replace('\r', ' ')
+
+                data.append(date)
+                data.append(name)
+                data.append(stars)
+                data.append(url)
+                data.append(title + ' ' + text)
+
+                if self.string_to_date(date) < start_date:
+                    can_go = False
+                    break
+
+                cards.append(data)
+
+                if not name in self.last_dates:
+                    self.last_dates[name] = date
+
+
+        for card in cards:
+            self.result.append(card)
+
+
+
+
+
+
 
 
 
@@ -256,7 +458,18 @@ if __name__ == '__main__':
 
     # pars.rkorf(TEST[3])
 
+    # pars.bankiclub(TEST[-1])
+    # pars.bankiros(TEST[-1])
 
-    # pars.save_result()
+    pars.brobank(TEST[-1])
+
+
+
+
+
+
+
+
+    pars.save_result()
 
     # print(pars.__dict__)
