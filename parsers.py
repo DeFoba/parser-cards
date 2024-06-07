@@ -11,9 +11,10 @@ import json
 
 TEST = ['https://irecommend.ru/content/tinkoff-biznes', 'https://irecommend.ru/content/tinkoff', 'https://развивай.рф/business_credits/tinkoff/otzyvy',
         'https://рко.рф/reviews/bank/tinkoff', 'https://bankiclub.ru/rkos/tinkoff-business/reviews/', 'https://bankiros.ru/bank/tcs/otzyvy',
-        'https://bankiros.ru/bank/tcs/otzyvy/rko', 'https://brobank.ru/banki/tinkoff/comments/', 'https://brobank.ru/rko-tinkoff/comments/']
+        'https://bankiros.ru/bank/tcs/otzyvy/rko', 'https://brobank.ru/banki/tinkoff/comments/', 'https://brobank.ru/rko-tinkoff/comments/', 
+        'https://credits-on-line.ru/rko/tinkoff-biznes/otzyvy/', 'https://moskva.bankiros.ru/bank/tcs/otzyvy/rko']
 
-DOMAINS = ['irecommend.ru', 'развивай.рф', 'рко.рф', 'bankiclub.ru', 'bankiros.ru', 'brobank.ru']
+DOMAINS = ['irecommend.ru', 'развивай.рф', 'рко.рф', 'bankiclub.ru', 'bankiros.ru', 'brobank.ru', 'credits-on-line.ru']
 
 translate_month = {
     'Янв': 'January',
@@ -414,7 +415,53 @@ class Parser:
 
 
 
+    # credits-on-line.ru
+    def creditsonline(self, url, start_date=None):
+        if start_date == None: start_date = self.start_date
+        else: start_date = self.string_to_date(start_date)
 
+        cards = []
+
+
+        response = self.send(url + '?commentsSortField=type&commentsSortValue=newest&commentsWhereField=rating&commentsWhereValue=')
+        sleep(0.1)
+        html = BeautifulSoup(response.content, 'html.parser')
+        sleep(0.1)
+
+        main_blcok = html.find('ol', {'class': 'comments-tree-list'})
+
+        name = html.find('div', {'class': 'h1'}).find('h1').text.strip().replace('\n', ' ').replace('\r', ' ')
+
+        for card in main_blcok.find_all('div', {'id': re.compile('.*comment-id.')}):
+            data = []
+
+            date_text = card.find('span', {'class': 'rev_comm_date'}).text.strip().replace('\n', ' ').replace('\r', ' ').split(' в ')[0]
+            date = self.date_to_string(self.string_to_date(date_text))
+            stars_temp = card.find('li', {'class': 'current-rating'}).text.strip().replace('\n', ' ').replace('\r', ' ')
+            text = card.find('div', {'class': 'rev_comm_text'}).text.strip().replace('\n', ' ').replace('\r', ' ')
+
+            if int(stars_temp) != 0:
+                stars = int(int(stars_temp) / 10)
+            else:
+                stars = 0
+
+            data.append(date)
+            data.append(name)
+            data.append(stars)
+            data.append(url)
+            data.append(text)
+
+            if self.string_to_date(date) < start_date:
+                    break
+
+            cards.append(data)
+
+            if not name in self.last_dates:
+                self.last_dates[name] = date
+
+
+        for card in cards:
+            self.result.append(card)
 
 
 
@@ -461,7 +508,9 @@ if __name__ == '__main__':
     # pars.bankiclub(TEST[-1])
     # pars.bankiros(TEST[-1])
 
-    pars.brobank(TEST[-1])
+    # pars.brobank(TEST[-1])
+    # pars.creditsonline(TEST[-1])
+    pars.bankiros(TEST[-1])
 
 
 
