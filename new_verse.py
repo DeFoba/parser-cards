@@ -14,12 +14,12 @@ import undetected_chromedriver as uc
 
 PROX = fp.FreeProxy(rand=True)
 
-TEST = [
-        'https://brobank.ru/banki/tinkoff/comments/', 'https://brobank.ru/rko-tinkoff/comments/', 
-        'https://credits-on-line.ru/rko/tinkoff-biznes/otzyvy/', 'https://moskva.bankiros.ru/bank/tcs/otzyvy/rko', 'https://otzovik.com/reviews/tinkoff_biznes/',
+TEST = [ 
         'https://ru.myfin.by/bank/tcs/otzyvy', 'https://topbanki.ru/banks/tcsbank/']
 
 DOMAINS = ['irecommend.ru', 'развивай.рф', 'рко.рф', 'bankiclub.ru', 'bankiros.ru', 'brobank.ru', 'credits-on-line.ru', 'ru.myfin.by', 'topbanki.ru'] #'otzovik.com']
+
+PAGE_PREFIX = '|{count}|'
 
 translate_month = {
     'Янв': 'January',
@@ -141,6 +141,7 @@ config = {
         'url':      'https://bankiros.ru',
         'selenium': False,
         'check_date': True,
+        'headers_domain': ['moskva.bankiros.ru', HEADERS['bankiros.ru']['headers']],
         'date':     'normal', # normal / hard (1, 2, 3, 4) / veryhard
         'links':    'no all',
         'links_find': 'a',
@@ -190,8 +191,59 @@ config = {
         }
     },
 
-    # 'brobank.ru':
-    # 'credits-on-line.ru':
+    'credits-on-line.ru': {
+        'url':      'https://credits-on-line.ru',
+        'selenium': False,
+        'check_date': True,
+        'date':     'hard', # normal / hard (1, 2, 3, 4) / veryhard
+        'date_spliter': [' в ', 0],
+        'links':    'none',
+        'prefix':   '?commentsSortField=type&commentsSortValue=newest&commentsWhereField=rating&commentsWhereValue=',
+        'headers': DEFAULT_HEADERS,
+        'pages': None,
+        'cards_list_element':   ['ol', 'class', 'comments-tree-list'],
+        'cards_list':           ['div', 'id', '.*comment-id.'],
+        'stars': '',
+        'second_name': 'h1',
+        'name_index': 0,
+        'elements': {
+            'date':     ['span',     'class',    'rev_comm_date'],
+            'name':     ['div',      'class',    'h1'],
+            'title':    None,
+            'text':     ['div',    'class',    'rev_comm_text'],
+            'link':     None
+        }
+    },
+
+    'otzovik.com': {
+        'url':      'https://otzovik.com',
+        'selenium': False,
+        'check_date': True,
+        'date':     'normal', # normal / hard (1, 2, 3, 4) / veryhard
+        'links':    'all',
+        'prefix':   None,
+        'headers': DEFAULT_HEADERS,
+        'pages': {
+            'url':      '/' + PAGE_PREFIX + '/?order=date_desc',
+            'start_count': 1,
+            'max':      ['div', 'class', 'pager'],
+            'index':    -1,
+            'spliter': ['/', -2],
+            'second_element': 'a',
+            'level':    'veryhard' # easy / hard / veryhard
+        },
+        'cards_list_element':   ['div', 'class', 'review-list-chunk'],
+        'cards_list':           ['div', 'class', 'item'],
+        'stars': '',
+        'elements': {
+            'date':     ['div',     'class',    'review-postdate'],
+            'name':     ['h1',      'class',    'product-name'],
+            'title':    ['a',      'class',    'review-title'],
+            'text':     ['div',    'class',    'review-body-wrap'],
+            'link':     ['a',       'class',    'review-title']
+        }
+    },
+
     # 'ru.myfin.by':
     # 'topbanki.ru'
 }
@@ -202,9 +254,11 @@ class Parser:
         self.stop_date = self.string_to_date('03.03.2021')
         self.names = ['date', 'name', 'stars', 'links', 'text']
         self.result = [self.names]
+        self.page_prefix = PAGE_PREFIX
 
     # Normalize date
     def string_to_date(self, start_date):
+        start_date = self.normalize_data([start_date])[0]
         if ' ' in start_date:
             d, m, y = start_date.lower().split(' ')
             m = translate_month[str(m).capitalize()[:3]][:3]
@@ -241,7 +295,7 @@ class Parser:
         match config[domain]['pages']['level']:
             case 'easy': max_page = int(html.find(*self.selector(config[domain]['pages']['max'])).text)
             case 'hard': max_page = int(html.find(*self.selector(config[domain]['pages']['max'])).find_all(config[domain]['pages']['second_element'])[config[domain]['pages']['index']].text)
-            case 'veryhard': max_page = int(0)
+            case 'veryhard': max_page = int(html.find(*self.selector(config[domain]['pages']['max'])).find_all(config[domain]['pages']['second_element'])[config[domain]['pages']['index']].get('href').split(config[domain]['pages']['spliter'][0])[config[domain]['pages']['spliter'][-1]])
 
         return max_page
     
@@ -313,7 +367,11 @@ class Parser:
     def run_loop_of_pages(self, domain, url):
         current_page = config[domain]['pages']['start_count']
 
-        html, card_links_element = self.get_page(domain, url + config[domain]['pages']['url'] + str(current_page))
+        if not self.page_prefix in config[domain]['pages']['url']:
+            html, card_links_element = self.get_page(domain, url + config[domain]['pages']['url'] + str(current_page))
+        else:
+            html, card_links_element = self.get_page(domain, url + config[domain]['pages']['url'].replace(self.page_prefix, str(current_page)))
+
         sleep(2)
 
         # with open('index.html', 'w', encoding='utf-8') as file:
@@ -339,7 +397,14 @@ class Parser:
             url = url + config[domain]['prefix']
 
         if not config[domain]['selenium']:
-            response = requests.get(url, headers=config[domain]['headers'], proxies=None).content
+            if not 'headers_domain' in config[domain]:
+                response = requests.get(url, headers=config[domain]['headers'], proxies=None).content
+            else:
+                if config[domain]['headers_domain'][0] in url:
+                    response = requests.get(url, headers=config[domain]['headers_domain'][1], proxies=None).content
+                else:
+                    response = requests.get(url, headers=config[domain]['headers'], proxies=None).content
+
             sleep(0.1)
 
         print(url)
@@ -374,7 +439,10 @@ if __name__ == '__main__':
     # parser.pars_by_request('https://рко.рф/reviews/bank/tinkoff')
     # parser.pars_by_request('https://bankiclub.ru/rkos/tinkoff-business/reviews')
     # parser.pars_by_request('https://bankiros.ru/bank/tcs/otzyvy/rko')
-    parser.pars_by_request('https://brobank.ru/banki/tinkoff/comments')
+    # parser.pars_by_request('https://brobank.ru/banki/tinkoff/comments')
+    # parser.pars_by_request('https://credits-on-line.ru/rko/tinkoff-biznes/otzyvy')
+    # parser.pars_by_request('https://moskva.bankiros.ru/bank/tcs/otzyvy/rko') # FIX IT: <-------------
+    # parser.pars_by_request('https://otzovik.com/reviews/tinkoff_biznes')
     print(parser.result)
 
 exit()
